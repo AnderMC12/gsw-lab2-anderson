@@ -1,0 +1,66 @@
+GESTIÓN DE SERVIDORES WEB - LABORATORIO 2 (INDIVIDUAL)
+Caso: "Dulce Hogar" - Repostería Artesanal
+Estudiante: Anderson Saul Maravilla Callejas
+Universidad de Oriente (UNIVO) - Ciclo 02-2026
+
+==========================================================
+FASE 1 - DIMENSIONAMIENTO
+==========================================================
+
+1) Peticiones por segundo (promedio y pico)
+-------------------------------------------
+Datos: 500 visitas/día, 5 peticiones por visita, factor pico = 15.
+
+  Peticiones por día   = 500 x 5            = 2,500 peticiones/día
+  Segundos en un día   = 24 x 60 x 60       = 86,400 s
+  Promedio             = 2,500 / 86,400     = 0.029 req/s
+  Pico (x15)           = 0.029 x 15         = 0.43 req/s
+
+Justificación: el promedio asume que el tráfico se reparte parejo todo el
+día, pero en la realidad se concentra en pocas horas (por ejemplo, cuando la
+gente pide pasteles en la tarde). El factor pico 15 modela esa concentración.
+Aun con el pico, hablamos de menos de una petición por segundo.
+
+Escenario de día festivo (3,000 visitas): 3,000 x 5 = 15,000 req/día
+  Promedio = 15,000 / 86,400 = 0.17 req/s
+  Pico x15 = 0.17 x 15       = 2.6 req/s
+
+2) ¿Alcanzan 2 vCPU y 4 GB de RAM?
+----------------------------------
+Sí, para ambos casos. Un Apache sirviendo HTML/CSS/imágenes atiende cientos
+de peticiones por segundo en hardware similar, y nuestro pico más alto (2.6
+req/s en día festivo) es una fracción mínima de esa capacidad.
+En RAM, el sistema operativo consume cerca de 0.5 GB, Apache unas decenas de
+MB por proceso/hilo y un Express simple alrededor de 50-100 MB, por lo que
+sobran varios GB. El único riesgo real sería un cambio de diseño (por ejemplo
+consultas pesadas a una base de datos), no el tráfico.
+
+3) Si el sitio responde lento, ¿qué reviso primero?
+---------------------------------------------------
+Revisaría primero la RAM (con `free -h` y `htop`). En un servidor pequeño de
+4 GB, cuando la memoria se agota el sistema empieza a usar swap en disco y
+todo se vuelve muy lento, aunque la CPU parezca tranquila. En la misma
+pantalla de htop también veo el uso de CPU, así que descarto ambos de una vez;
+después seguiría con disco (`iostat`/`df -h`) y red (`ss`, `iftop`).
+
+4) Decisión personal: ¿nube o servidor local?
+---------------------------------------------
+Recomiendo NUBE (un VPS pequeño) para "Dulce Hogar":
+- Costo: un VPS cuesta pocos dólares al mes; un servidor local implica
+  comprar equipo, UPS, pagar electricidad e IP fija. Para un negocio chico
+  la inversión inicial baja es clave.
+- Escalabilidad: en días festivos sube la demanda; en la nube se puede
+  aumentar CPU/RAM en minutos y bajarlos después. En local habría que
+  comprar hardware para un pico que dura pocos días.
+- Mantenimiento: el proveedor se encarga de la parte física, la
+  energía y la conectividad; el dueño solo administra el software. Un servidor
+  local depende de que alguien lo repare cuando falle.
+
+5) Reto: ¿bajaría la necesidad de CPU con un sitio solo estático?
+-----------------------------------------------------------------
+Sí, bajaría. Con contenido estático Apache solo lee el archivo del disco (o
+de la caché del sistema) y lo envía; no hay que ejecutar código por cada
+petición. Con Express, cada llamada a /api ejecuta JavaScript en Node, arma el
+JSON y pasa por el proxy. Además, lo estático se puede cachear en el navegador
+o en una CDN, de modo que muchas peticiones ni llegan al servidor.
+(El cifrado HTTPS sí consume algo de CPU en ambos casos.)
