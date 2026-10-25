@@ -1,28 +1,33 @@
 FASE 2 - APACHE + VIRTUAL HOST
 Estudiante: Anderson Saul Maravilla Callejas
 
-Entorno: WSL2 (Ubuntu) sobre Windows.   Versión de Apache: [pega la salida de: apache2 -v]
+Entorno: Windows + WSL2 (Ubuntu). Apache/2.4.66 (Ubuntu).
 
 ----------------------------------------------------------
-Comandos ejecutados
+Comandos ejecutados (en Ubuntu/WSL2)
 ----------------------------------------------------------
 sudo apt update
 sudo apt install -y apache2
-sudo systemctl status apache2
-sudo systemctl enable apache2
-curl http://localhost
+sudo service apache2 start        # en WSL2 uso "service" en lugar de systemctl
+curl http://localhost             # devolvió "Apache2 Ubuntu Default Page: It works"
 
-# En WSL2 sin systemd, el servicio se arranca con: sudo service apache2 start
-
-Paso 2.1 - /etc/apache2/ports.conf  ->  Listen 80 / Listen 8085
+Paso 2.1 - Puerto 8085 en /etc/apache2/ports.conf
+echo "Listen 8085" | sudo tee -a /etc/apache2/ports.conf
 
 Paso 2.2 - Contenido del sitio
 sudo mkdir -p /var/www/dulcehogar.local
+sudo cp .../codigo/index.html /var/www/dulcehogar.local/
+sudo cp .../codigo/pastel.svg /var/www/dulcehogar.local/
 sudo chown -R www-data:www-data /var/www/dulcehogar.local
-(index.html con mi nombre + imagen local pastel.svg: ver carpeta codigo/)
 
-Paso 2.3 - Virtual Host (versión de esta fase) en
-/etc/apache2/sites-available/dulcehogar.local.conf:
+Salida de ls -la /var/www/dulcehogar.local en ese momento:
+  drwxr-xr-x 2 www-data www-data 4096 Oct 24 18:25 .
+  -rwxr-xr-x 1 www-data www-data 1335 Oct 24 18:25 index.html
+  -rwxr-xr-x 1 www-data www-data  867 Oct 24 18:25 pastel.svg
+(Los archivos quedaron con "x" porque los copié desde Windows; lo corregí
+en la Fase 4 con 644.)
+
+Paso 2.3 - Virtual Host de esta fase (/etc/apache2/sites-available/dulcehogar.local.conf):
 
 <VirtualHost *:8085>
     ServerName dulcehogar.local
@@ -36,18 +41,23 @@ Paso 2.3 - Virtual Host (versión de esta fase) en
 </VirtualHost>
 
 Paso 2.4 - Activar y probar
-sudo a2ensite dulcehogar.local.conf
-sudo apache2ctl configtest        -> Syntax OK
-sudo systemctl reload apache2
+sudo a2ensite dulcehogar.local.conf      -> Enabling site dulcehogar.local.
+sudo apache2ctl configtest               -> Syntax OK
+sudo service apache2 reload
 echo "127.0.0.1 dulcehogar.local" | sudo tee -a /etc/hosts
-curl http://dulcehogar.local:8085
+curl http://dulcehogar.local:8085        -> devolvió mi index.html (Dulce Hogar)
+
+Para ver el sitio desde Chrome en Windows agregué también
+"127.0.0.1 dulcehogar.local" al archivo C:\Windows\System32\drivers\etc\hosts.
 
 ----------------------------------------------------------
-Salida de configtest (evidencia)
+Evidencia
 ----------------------------------------------------------
-[PEGA AQUÍ LA SALIDA REAL: debe decir "Syntax OK"]
-
-Captura: capturas/fase2-apache-sitio.png
+- configtest: "Syntax OK" (salida arriba).
+- Captura: capturas/fase2-apache-sitio.png
+  (http://dulcehogar.local:8085 en el navegador, con mi nombre y la imagen
+  local pastel.svg. Se tomó con la configuración de esta fase, antes de que
+  el puerto 8085 pasara a redirigir a HTTPS en la Fase 4.)
 
 ----------------------------------------------------------
 Preguntas
@@ -68,11 +78,26 @@ Preguntas
 
 3) Reto: HTML con mi nombre e imagen local
    Archivos: codigo/index.html y codigo/pastel.svg, copiados a
-   /var/www/dulcehogar.local/
-   Captura del navegador: capturas/fase2-apache-sitio.png
+   /var/www/dulcehogar.local/. El HTML muestra "Elaborado por Anderson Saul
+   Maravilla Callejas" y la imagen pastel.svg. Captura: capturas/fase2-apache-sitio.png
 
 ----------------------------------------------------------
 Errores encontrados y cómo los resolví
 ----------------------------------------------------------
-[Escribe SOLO los errores que realmente tuviste. Formato:
- Error: ...   Causa: ...   Solución: ...]
+1) WSL2 no estaba instalado
+   Error: "El Subsistema de Windows para Linux no está instalado" al correr wsl -l -v.
+   Solución: wsl --install -d Ubuntu desde PowerShell de administrador y crear
+   el usuario de Linux.
+
+2) Contraseña de Linux que no coincidía
+   Error: "Sorry, passwords do not match" dos veces al crear el usuario.
+   Causa: la contraseña no se ve al escribirla y me equivoqué al repetirla.
+   Solución: la repetí con cuidado; el tercer intento dio "password updated successfully".
+
+3) Comandos de Linux ejecutados en PowerShell (y al revés)
+   Error: "cd: /home/anderDownloadsgsw-lab2-anderson: No such file or directory"
+   en Bash, y "FIND: modificador no válido" / "Sudo está deshabilitado" en PowerShell.
+   Causa: confundí las dos terminales; \ y $HOME son sintaxis de PowerShell,
+   y find/sudo/ls -la son de Linux.
+   Solución: usar Ubuntu (prompt ander@ANDERSMC) para Apache y Linux, y
+   PowerShell (prompt PS C:\...) para git, node y npm.

@@ -4,76 +4,114 @@ Estudiante: Anderson Saul Maravilla Callejas
 ----------------------------------------------------------
 HTTPS
 ----------------------------------------------------------
-mkcert -install                       (con guion)
+sudo apt install -y libnss3-tools wget
+wget -O mkcert https://github.com/FiloSottile/mkcert/releases/download/v1.4.4/mkcert-v1.4.4-linux-amd64
+chmod +x mkcert
+sudo mv mkcert /usr/local/bin/mkcert
+mkcert -install
+  -> Created a new local CA. The local CA is now installed in the system trust store!
+
 mkcert dulcehogar.local
+  -> Created a new certificate valid for the following names: "dulcehogar.local"
+     It will expire on 24 January 2029
 sudo mkdir -p /etc/apache2/ssl/dulcehogar.local
 sudo mv dulcehogar.local.pem dulcehogar.local-key.pem /etc/apache2/ssl/dulcehogar.local/
 sudo chmod 600 /etc/apache2/ssl/dulcehogar.local/*.pem
+  -> -rw------- 1 ander ander 1704 ... dulcehogar.local-key.pem
+     -rw------- 1 ander ander 1460 ... dulcehogar.local.pem
 
-ports.conf, dulcehogar.local-ssl.conf y dulcehogar.local.conf (redirect):
-ver carpeta config/
+Configuración (en la carpeta config/):
+- ports.conf: Listen 80, Listen 8085 y Listen 4443 dentro de <IfModule ssl_module>
+- dulcehogar.local-ssl.conf: VirtualHost *:4443 con SSLEngine, certificado,
+  proxy a Express, cabeceras de seguridad y logs
+- dulcehogar.local.conf: VirtualHost *:8085 que solo hace Redirect permanent a https
 
 sudo a2enmod ssl headers
 sudo a2ensite dulcehogar.local-ssl.conf
-sudo apache2ctl configtest            -> Syntax OK
-sudo systemctl restart apache2
-sudo ss -tlnp | grep apache2          -> debe mostrar :80, :8085 y :4443
+sudo apache2ctl configtest                -> Syntax OK
+sudo service apache2 restart
+sudo ss -tlnp | grep apache2
+  LISTEN ... *:443    ...
+  LISTEN ... *:4443   ...
+  LISTEN ... *:80     ...
+  LISTEN ... *:8085   ...
+(El puerto 443 aparece porque ports.conf trae por defecto "Listen 443" dentro
+del bloque de ssl_module; no se usa para el sitio.)
+
 curl -I https://dulcehogar.local:4443/
+  HTTP/1.1 200 OK
+  Server: Apache/2.4.66 (Ubuntu)
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Content-Type: text/html
+(Sin quejas de certificado, porque la CA de mkcert está instalada en Ubuntu.)
 
-Importar la CA en Windows:
-(WSL2)       cp $(mkcert -CAROOT)/rootCA.pem /mnt/c/Users/TuUsuario/Desktop/
-(PowerShell) certutil -addstore -f "ROOT" C:\Users\TuUsuario\Desktop\rootCA.pem
-Además, en Windows: C:\Windows\System32\drivers\etc\hosts  ->  127.0.0.1 dulcehogar.local
+Redirección del puerto 8085:
+curl -I http://dulcehogar.local:8085/
+  HTTP/1.1 301 Moved Permanently
+  Location: https://dulcehogar.local:4443/
 
-Salida de ss -tlnp:
-[PEGA AQUÍ]
-
-Salida de curl -I:
-[PEGA AQUÍ]
-
+CA en Windows:
+cp "$(mkcert -CAROOT)/rootCA.pem" /mnt/c/Users/ander/Downloads/rootCA.pem
+certutil -addstore -f "ROOT" C:\Users\ander\Downloads\rootCA.pem   (PowerShell administrador)
+Después de reiniciar Chrome, https://dulcehogar.local:4443 abre sin advertencia
+y el panel de seguridad dice "Connection is secure / Certificate is valid".
 Captura: capturas/fase4-https-sin-advertencia.png
+(rootCA.pem y las llaves no se suben al repositorio.)
 
 ----------------------------------------------------------
 Permisos POSIX (sin 777)
 ----------------------------------------------------------
-find /var/www/dulcehogar.local -perm 0777        -> debe quedar vacío
+Antes: index.html y pastel.svg tenían -rwxr-xr-x (copiados desde Windows).
+
+find /var/www/dulcehogar.local -perm 0777        -> (vacío, no hay nada con 777)
 sudo chown -R www-data:www-data /var/www/dulcehogar.local
 sudo find /var/www/dulcehogar.local -type d -exec chmod 755 {} \;
 sudo find /var/www/dulcehogar.local -type f -exec chmod 644 {} \;
 ls -la /var/www/dulcehogar.local
 
-Nota: apliqué 755 a directorios y 644 a archivos. Los directorios necesitan
-el bit "x" para poder entrar a ellos, pero un HTML o una imagen no necesitan
-ser ejecutables.
+  drwxr-xr-x 2 www-data www-data 4096 Oct 24 18:25 .
+  -rw-r--r-- 1 www-data www-data 1335 Oct 24 18:25 index.html
+  -rw-r--r-- 1 www-data www-data  867 Oct 24 18:25 pastel.svg
 
-Salida de ls -la:
-[PEGA AQUÍ]
-
-Captura: capturas/fase4-permisos-ok.png
+Apliqué 755 a directorios y 644 a archivos: los directorios necesitan el bit
+"x" para poder entrar en ellos, pero un HTML o una imagen no necesitan ser
+ejecutables. Captura: capturas/fase4-permisos-ok.png
 
 ----------------------------------------------------------
 Logs
 ----------------------------------------------------------
-curl -k "https://dulcehogar.local:4443/api/saludo?nombre=Anderson"   (varias veces)
+curl "https://dulcehogar.local:4443/api/saludo?nombre=Anderson"
+curl "https://dulcehogar.local:4443/api/saludo?nombre=Equipo"
+curl "https://dulcehogar.local:4443/api/pedido?producto=pastel&cantidad=2"
 sudo tail -n 10 /var/log/apache2/dulcehogar.local-access.log
-sudo tail -n 10 /var/log/apache2/dulcehogar.local-error.log
 
-Salida del access.log:
-[PEGA AQUÍ]
+127.0.0.1 - - [24/Oct/2026:19:34:02 -0600] "GET /api/saludo?nombre=Anderson HTTP/1.1" 200 3217 "-" "curl/8.18.0"
+127.0.0.1 - - [24/Oct/2026:19:34:06 -0600] "GET /api/saludo?nombre=Equipo HTTP/1.1" 200 3215 "-" "curl/8.18.0"
+127.0.0.1 - - [24/Oct/2026:19:34:10 -0600] "GET /api/pedido?producto=pastel&cantidad=2 HTTP/1.1" 200 3250 "-" "curl/8.18.0"
+127.0.0.1 - - [24/Oct/2026:18:58:21 -0600] "HEAD / HTTP/1.1" 301 190 "-" "curl/8.18.0"
 
-Cómo interpreto una línea del access.log (formato "combined"):
-  127.0.0.1 - - [23/Oct/2026:20:15:42 -0600] "GET /api/saludo?nombre=Anderson HTTP/1.1" 200 78 "-" "curl/8.5.0"
-  - 127.0.0.1 ........ IP del cliente que hizo la petición
-  - - - .............. identidad remota y usuario autenticado (vacíos)
-  - [fecha] .......... momento exacto de la petición y zona horaria
-  - "GET /api/... " .. método, ruta con parámetros y versión de HTTP
-  - 200 .............. código de estado (200 OK; 404 no existe; 502/503 el
-                       backend Express no respondió)
-  - 78 ............... tamaño de la respuesta en bytes
-  - "-" .............. referer (página desde la que llegó el visitante)
-  - "curl/8.5.0" ..... user-agent (navegador o programa que hizo la petición)
+error.log (sudo tail -n 10 /var/log/apache2/dulcehogar.local-error.log):
+[PEGA AQUÍ LA SALIDA REAL DEL error.log]
 
 Captura: capturas/fase4-log-acceso.png
+
+Cómo leo una línea del access.log (formato "combined"), con la de las 19:34:02:
+  127.0.0.1 ............ IP del cliente (la petición salió de mi propia PC)
+  - - .................. identidad remota y usuario autenticado (vacíos)
+  [24/Oct/2026:19:34:02 -0600] ... fecha, hora y zona horaria (El Salvador, UTC-6)
+  "GET /api/saludo?nombre=Anderson HTTP/1.1" ... método, ruta con parámetros, protocolo
+  200 .................. código de estado (200 OK; 301 redirección; 404 no existe;
+                         502/503 el backend Express no respondió)
+  3217 ................. bytes enviados en la respuesta
+  "-" .................. referer (de qué página venía; vacío con curl)
+  "curl/8.18.0" ........ user-agent: qué programa hizo la petición
+
+Otras líneas que aparecen en mi log:
+- "HEAD / ... 301" es curl -I al puerto 8085: Apache redirige a HTTPS.
+- Las líneas con "-" y código 408 son conexiones que Chrome abrió por
+  adelantado y dejó vacías; Apache las cerró por tiempo. No son errores del sitio.
+- La línea con "WindowsPowerShell/5.1" es una petición que hice desde PowerShell.
 
 ----------------------------------------------------------
 Preguntas
@@ -115,4 +153,31 @@ Preguntas
 ----------------------------------------------------------
 Errores encontrados y cómo los resolví
 ----------------------------------------------------------
-[Escribe SOLO los errores que realmente tuviste.]
+1) Comandos de Linux en PowerShell
+   Error: "FIND: modificador no válido", "Sudo está deshabilitado en este
+   equipo" y "ls -la: no se encuentra ningún parámetro 'la'" al intentar
+   ajustar permisos.
+   Causa: ejecuté los comandos de Ubuntu en la terminal de PowerShell.
+   Solución: entrar a Ubuntu con wsl y repetirlos allí. Ningún comando afectó
+   archivos, porque PowerShell los rechazó.
+
+2) Redirect permanente del 8085 vs. captura de la Fase 2
+   Problema: desde la Fase 4, http://dulcehogar.local:8085 redirige a HTTPS, y
+   Chrome recuerda las redirecciones 301, así que ya no mostraba la versión de la Fase 2.
+   Solución: restauré temporalmente el VirtualHost de la Fase 2, abrí el sitio
+   en una ventana de incógnito para la captura y luego devolví el redirect
+   (comprobado con grep Redirect y configtest).
+
+3) Nombres de capturas
+   Error: las capturas se guardaron como "capturasfase2-apache-sitio.png" y con
+   doble extensión (.png.png), en OneDrive\Imágenes\Screenshots.
+   Causa: escribí "capturas\" dentro del campo de nombre al guardar, y la
+   Herramienta Recortes guarda por defecto en OneDrive.
+   Solución: copiarlas a la carpeta capturas/ del repositorio con el nombre correcto.
+
+4) Git: Repository not found y Failed to connect
+   Error: git push dio "Repository not found" (todavía no había creado el
+   repositorio en GitHub) y luego "Failed to connect to github.com:443".
+   Solución: crear el repositorio vacío en GitHub; comprobé la red con
+   Test-NetConnection github.com -Port 443 (True), no había proxy configurado,
+   y el push funcionó al reintentar.

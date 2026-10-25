@@ -2,25 +2,24 @@ FASE 3 - REVERSE PROXY A EXPRESS
 Estudiante: Anderson Saul Maravilla Callejas
 
 ----------------------------------------------------------
-Proyecto Express (Windows)
+Proyecto Express (Windows, PowerShell)
 ----------------------------------------------------------
+node -v                    -> v24.18.1
 mkdir C:\dulcehogar.api
 cd C:\dulcehogar.api
 npm init -y
-npm install express
-(código en codigo/index.js)
-
-Prueba directa:
-curl "http://localhost:9090/api/saludo?nombre=Prueba"
-curl "http://localhost:9090/api/pedido?producto=pastel&cantidad=2"
+npm install express        -> added 65 packages, found 0 vulnerabilities
+copy ...\codigo\index.js .
+node index.js              -> [dulcehogar.api] http://localhost:9090
 
 Firewall de Windows (PowerShell como administrador):
 New-NetFirewallRule -DisplayName "Permitir WSL 9090" -Direction Inbound -LocalPort 9090 -Protocol TCP -Action Allow
+(Regla creada: Enabled True, Direction Inbound, Action Allow.)
 
 IP del host Windows vista desde WSL2:
 ip route show | grep default
-IP_HOST = [ESCRIBE AQUÍ TU IP, p. ej. 172.22.0.1]
-curl "http://IP_HOST:9090/api/saludo?nombre=WSL"
+IP_HOST = 172.30.208.1
+curl "http://172.30.208.1:9090/api/saludo?nombre=WSL"   -> respondió el JSON de Express
 
 ----------------------------------------------------------
 Virtual Host :8085 con proxy (versión de esta fase)
@@ -28,25 +27,33 @@ Virtual Host :8085 con proxy (versión de esta fase)
 <VirtualHost *:8085>
     ServerName dulcehogar.local
     DocumentRoot /var/www/dulcehogar.local
+    <Directory /var/www/dulcehogar.local>
+        AllowOverride All
+        Require all granted
+    </Directory>
 
     ProxyPreserveHost On
-    ProxyPass /api http://IP_HOST:9090/api
-    ProxyPassReverse /api http://IP_HOST:9090/api
+    ProxyPass /api http://172.30.208.1:9090/api
+    ProxyPassReverse /api http://172.30.208.1:9090/api
 
     ErrorLog ${APACHE_LOG_DIR}/dulcehogar.local-error.log
     CustomLog ${APACHE_LOG_DIR}/dulcehogar.local-access.log combined
 </VirtualHost>
 
-sudo a2enmod proxy proxy_http
-sudo apache2ctl configtest
-sudo systemctl reload apache2
+sudo a2enmod proxy proxy_http    -> Enabling module proxy. / Enabling module proxy_http.
+sudo apache2ctl configtest       -> Syntax OK
+sudo service apache2 restart
+
+Respuestas a través de Apache (puerto 8085):
 curl "http://dulcehogar.local:8085/api/saludo?nombre=Equipo"
+{"mensaje":"Hola, Equipo","desde":"dulcehogar:9090"}
+
 curl "http://dulcehogar.local:8085/api/pedido?producto=pastel&cantidad=2"
+{"pedidoId":"PED-1792888587780","producto":"pastel","cantidad":"2","estado":"recibido"}
 
-Salida real de los curl vía Apache:
-[PEGA AQUÍ EL JSON]
-
-Captura: capturas/fase3-curl-json.png
+Evidencia: capturas/fase3-curl-json.png
+(La captura final se tomó después de configurar HTTPS en la Fase 4, por eso
+usa https://dulcehogar.local:4443; el proxy es el mismo en ambos puertos.)
 
 ----------------------------------------------------------
 Preguntas
@@ -65,18 +72,45 @@ Preguntas
    red (en el modo NAT por defecto). Dentro de Linux, "localhost" (127.0.0.1)
    es la propia VM, no Windows. Como Express está corriendo en Windows, hay
    que usar la IP del host Windows visible desde la VM (la puerta de enlace
-   de `ip route`), y el firewall de Windows debe permitir el puerto 9090.
+   de `ip route`, aquí 172.30.208.1), y el firewall de Windows debe permitir
+   el puerto 9090.
 
 3) Reto: ProxyPass /api http://IP_HOST:9090 (sin /api final)
-   Resultado esperado: Apache quita el prefijo /api y pega el resto al
-   destino, así que una petición a /api/saludo?nombre=Equipo se reenvía como
-   http://IP_HOST:9090/saludo?nombre=Equipo. Express no tiene esa ruta
-   (solo /api/saludo y /api/pedido), por lo tanto responde 404
-   ("Cannot GET /saludo").
-   Resultado de mi prueba: [PEGA AQUÍ LO QUE OBTUVISTE]
-   Se resuelve dejando /api al final del destino, para que la ruta se conserve.
+   Cambié las dos líneas (ProxyPass y ProxyPassReverse) quitando el /api
+   final del destino, hice configtest (Syntax OK) y restart, y probé:
+
+   curl -i "http://dulcehogar.local:8085/api/saludo?nombre=Equipo"
+   HTTP/1.1 404 Not Found
+   Server: Apache/2.4.66 (Ubuntu)
+   X-Powered-By: Express
+   Content-Type: text/html; charset=utf-8
+   ...
+   <pre>Cannot GET /saludo</pre>
+
+   Explicación: Apache quitó el prefijo /api y reenvió /saludo a Express. El
+   encabezado X-Powered-By: Express confirma que la petición sí llegó al
+   backend, pero Express solo define /api/saludo y /api/pedido, así que
+   respondió 404. Volví a dejar /api al final del destino y el curl devolvió
+   otra vez {"mensaje":"Hola, Equipo",...}.
 
 ----------------------------------------------------------
 Errores encontrados y cómo los resolví
 ----------------------------------------------------------
-[Escribe SOLO los errores que realmente tuviste.]
+1) Firewall: "Acceso denegado"
+   Error: New-NetFirewallRule : Acceso denegado (Windows System Error 5).
+   Causa: la ventana de PowerShell no estaba abierta como administrador.
+   Solución: abrir PowerShell con "Ejecutar como administrador" y repetir el
+   comando; la regla se creó correctamente.
+
+2) Chrome: DNS_PROBE_FINISHED_NXDOMAIN
+   Error: "This site can't be reached" al abrir http://dulcehogar.local:8085.
+   Causa: dulcehogar.local solo estaba en /etc/hosts de Ubuntu, no en el
+   archivo hosts de Windows.
+   Solución: agregar "127.0.0.1 dulcehogar.local" a
+   C:\Windows\System32\drivers\etc\hosts y ejecutar ipconfig /flushdns.
+
+3) Dos curl mezclados en la captura
+   Error: la salida salió cortada ({"mensaje":"Hola, curl "https://...) porque
+   pegué el segundo comando antes de que terminara el primero. El JSON de
+   Express no termina en salto de línea.
+   Solución: ejecutar cada curl por separado, o agregar "; echo" al final.
