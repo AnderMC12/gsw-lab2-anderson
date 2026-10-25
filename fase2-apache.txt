@@ -1,0 +1,78 @@
+FASE 2 - APACHE + VIRTUAL HOST
+Estudiante: Anderson Saul Maravilla Callejas
+
+Entorno: WSL2 (Ubuntu) sobre Windows.   Versión de Apache: [pega la salida de: apache2 -v]
+
+----------------------------------------------------------
+Comandos ejecutados
+----------------------------------------------------------
+sudo apt update
+sudo apt install -y apache2
+sudo systemctl status apache2
+sudo systemctl enable apache2
+curl http://localhost
+
+# En WSL2 sin systemd, el servicio se arranca con: sudo service apache2 start
+
+Paso 2.1 - /etc/apache2/ports.conf  ->  Listen 80 / Listen 8085
+
+Paso 2.2 - Contenido del sitio
+sudo mkdir -p /var/www/dulcehogar.local
+sudo chown -R www-data:www-data /var/www/dulcehogar.local
+(index.html con mi nombre + imagen local pastel.svg: ver carpeta codigo/)
+
+Paso 2.3 - Virtual Host (versión de esta fase) en
+/etc/apache2/sites-available/dulcehogar.local.conf:
+
+<VirtualHost *:8085>
+    ServerName dulcehogar.local
+    DocumentRoot /var/www/dulcehogar.local
+    <Directory /var/www/dulcehogar.local>
+        AllowOverride All
+        Require all granted
+    </Directory>
+    ErrorLog ${APACHE_LOG_DIR}/dulcehogar.local-error.log
+    CustomLog ${APACHE_LOG_DIR}/dulcehogar.local-access.log combined
+</VirtualHost>
+
+Paso 2.4 - Activar y probar
+sudo a2ensite dulcehogar.local.conf
+sudo apache2ctl configtest        -> Syntax OK
+sudo systemctl reload apache2
+echo "127.0.0.1 dulcehogar.local" | sudo tee -a /etc/hosts
+curl http://dulcehogar.local:8085
+
+----------------------------------------------------------
+Salida de configtest (evidencia)
+----------------------------------------------------------
+[PEGA AQUÍ LA SALIDA REAL: debe decir "Syntax OK"]
+
+Captura: capturas/fase2-apache-sitio.png
+
+----------------------------------------------------------
+Preguntas
+----------------------------------------------------------
+1) Diferencia entre sites-available y sites-enabled
+   sites-available es la carpeta donde se guardan TODOS los archivos de
+   configuración de sitios, estén activos o no. sites-enabled solo contiene
+   enlaces simbólicos hacia los que están activos, y Apache lee únicamente esa
+   carpeta. `a2ensite` crea el enlace y `a2dissite` lo borra, sin eliminar el
+   archivo original; así se puede apagar un sitio sin perder su configuración.
+
+2) ¿Por qué configtest antes de reload?
+   Porque revisa la sintaxis de todos los archivos antes de aplicar nada. Si
+   hay un error (una etiqueta sin cerrar, un módulo que falta), lo veo sin
+   afectar el sitio que está funcionando. Con un `restart` y una
+   configuración rota, Apache podría no volver a levantar y el sitio quedaría
+   caído; con configtest primero se evita ese riesgo.
+
+3) Reto: HTML con mi nombre e imagen local
+   Archivos: codigo/index.html y codigo/pastel.svg, copiados a
+   /var/www/dulcehogar.local/
+   Captura del navegador: capturas/fase2-apache-sitio.png
+
+----------------------------------------------------------
+Errores encontrados y cómo los resolví
+----------------------------------------------------------
+[Escribe SOLO los errores que realmente tuviste. Formato:
+ Error: ...   Causa: ...   Solución: ...]
