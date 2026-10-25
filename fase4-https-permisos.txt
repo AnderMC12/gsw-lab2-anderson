@@ -92,7 +92,7 @@ sudo tail -n 10 /var/log/apache2/dulcehogar.local-access.log
 127.0.0.1 - - [24/Oct/2026:18:58:21 -0600] "HEAD / HTTP/1.1" 301 190 "-" "curl/8.18.0"
 
 error.log (sudo tail -n 10 /var/log/apache2/dulcehogar.local-error.log):
-[PEGA AQUÍ LA SALIDA REAL DEL error.log]
+(vacío: el error.log no registró ningún error durante las pruebas)
 
 Captura: capturas/fase4-log-acceso.png
 
