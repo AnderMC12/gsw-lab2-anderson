@@ -1,0 +1,82 @@
+FASE 3 - REVERSE PROXY A EXPRESS
+Estudiante: Anderson Saul Maravilla Callejas
+
+----------------------------------------------------------
+Proyecto Express (Windows)
+----------------------------------------------------------
+mkdir C:\dulcehogar.api
+cd C:\dulcehogar.api
+npm init -y
+npm install express
+(código en codigo/index.js)
+
+Prueba directa:
+curl "http://localhost:9090/api/saludo?nombre=Prueba"
+curl "http://localhost:9090/api/pedido?producto=pastel&cantidad=2"
+
+Firewall de Windows (PowerShell como administrador):
+New-NetFirewallRule -DisplayName "Permitir WSL 9090" -Direction Inbound -LocalPort 9090 -Protocol TCP -Action Allow
+
+IP del host Windows vista desde WSL2:
+ip route show | grep default
+IP_HOST = [ESCRIBE AQUÍ TU IP, p. ej. 172.22.0.1]
+curl "http://IP_HOST:9090/api/saludo?nombre=WSL"
+
+----------------------------------------------------------
+Virtual Host :8085 con proxy (versión de esta fase)
+----------------------------------------------------------
+<VirtualHost *:8085>
+    ServerName dulcehogar.local
+    DocumentRoot /var/www/dulcehogar.local
+
+    ProxyPreserveHost On
+    ProxyPass /api http://IP_HOST:9090/api
+    ProxyPassReverse /api http://IP_HOST:9090/api
+
+    ErrorLog ${APACHE_LOG_DIR}/dulcehogar.local-error.log
+    CustomLog ${APACHE_LOG_DIR}/dulcehogar.local-access.log combined
+</VirtualHost>
+
+sudo a2enmod proxy proxy_http
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+curl "http://dulcehogar.local:8085/api/saludo?nombre=Equipo"
+curl "http://dulcehogar.local:8085/api/pedido?producto=pastel&cantidad=2"
+
+Salida real de los curl vía Apache:
+[PEGA AQUÍ EL JSON]
+
+Captura: capturas/fase3-curl-json.png
+
+----------------------------------------------------------
+Preguntas
+----------------------------------------------------------
+1) ¿Qué hace ProxyPass /api http://IP_HOST:9090/api ?
+   Le dice a Apache que toda petición cuya ruta empiece con /api no se sirva
+   desde el DocumentRoot, sino que Apache actúe de intermediario: la reenvía
+   al servidor Express en IP_HOST:9090, recibe su respuesta y se la devuelve
+   al cliente. El cliente solo habla con Apache (puerto 8085) y nunca ve el
+   puerto 9090. La parte /api de la petición se sustituye por la ruta del
+   destino. ProxyPassReverse reescribe las cabeceras (por ejemplo Location en
+   redirecciones) para que sigan apuntando a Apache y no al backend.
+
+2) ¿Por qué localhost desde WSL2 no llega al Express en Windows?
+   Porque WSL2 corre en una máquina virtual ligera con su propia interfaz de
+   red (en el modo NAT por defecto). Dentro de Linux, "localhost" (127.0.0.1)
+   es la propia VM, no Windows. Como Express está corriendo en Windows, hay
+   que usar la IP del host Windows visible desde la VM (la puerta de enlace
+   de `ip route`), y el firewall de Windows debe permitir el puerto 9090.
+
+3) Reto: ProxyPass /api http://IP_HOST:9090 (sin /api final)
+   Resultado esperado: Apache quita el prefijo /api y pega el resto al
+   destino, así que una petición a /api/saludo?nombre=Equipo se reenvía como
+   http://IP_HOST:9090/saludo?nombre=Equipo. Express no tiene esa ruta
+   (solo /api/saludo y /api/pedido), por lo tanto responde 404
+   ("Cannot GET /saludo").
+   Resultado de mi prueba: [PEGA AQUÍ LO QUE OBTUVISTE]
+   Se resuelve dejando /api al final del destino, para que la ruta se conserve.
+
+----------------------------------------------------------
+Errores encontrados y cómo los resolví
+----------------------------------------------------------
+[Escribe SOLO los errores que realmente tuviste.]

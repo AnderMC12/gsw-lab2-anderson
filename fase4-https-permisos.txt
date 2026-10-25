@@ -1,0 +1,118 @@
+FASE 4 - HTTPS CON MKCERT + PERMISOS + LOGS
+Estudiante: Anderson Saul Maravilla Callejas
+
+----------------------------------------------------------
+HTTPS
+----------------------------------------------------------
+mkcert -install                       (con guion)
+mkcert dulcehogar.local
+sudo mkdir -p /etc/apache2/ssl/dulcehogar.local
+sudo mv dulcehogar.local.pem dulcehogar.local-key.pem /etc/apache2/ssl/dulcehogar.local/
+sudo chmod 600 /etc/apache2/ssl/dulcehogar.local/*.pem
+
+ports.conf, dulcehogar.local-ssl.conf y dulcehogar.local.conf (redirect):
+ver carpeta config/
+
+sudo a2enmod ssl headers
+sudo a2ensite dulcehogar.local-ssl.conf
+sudo apache2ctl configtest            -> Syntax OK
+sudo systemctl restart apache2
+sudo ss -tlnp | grep apache2          -> debe mostrar :80, :8085 y :4443
+curl -I https://dulcehogar.local:4443/
+
+Importar la CA en Windows:
+(WSL2)       cp $(mkcert -CAROOT)/rootCA.pem /mnt/c/Users/TuUsuario/Desktop/
+(PowerShell) certutil -addstore -f "ROOT" C:\Users\TuUsuario\Desktop\rootCA.pem
+Además, en Windows: C:\Windows\System32\drivers\etc\hosts  ->  127.0.0.1 dulcehogar.local
+
+Salida de ss -tlnp:
+[PEGA AQUÍ]
+
+Salida de curl -I:
+[PEGA AQUÍ]
+
+Captura: capturas/fase4-https-sin-advertencia.png
+
+----------------------------------------------------------
+Permisos POSIX (sin 777)
+----------------------------------------------------------
+find /var/www/dulcehogar.local -perm 0777        -> debe quedar vacío
+sudo chown -R www-data:www-data /var/www/dulcehogar.local
+sudo find /var/www/dulcehogar.local -type d -exec chmod 755 {} \;
+sudo find /var/www/dulcehogar.local -type f -exec chmod 644 {} \;
+ls -la /var/www/dulcehogar.local
+
+Nota: apliqué 755 a directorios y 644 a archivos. Los directorios necesitan
+el bit "x" para poder entrar a ellos, pero un HTML o una imagen no necesitan
+ser ejecutables.
+
+Salida de ls -la:
+[PEGA AQUÍ]
+
+Captura: capturas/fase4-permisos-ok.png
+
+----------------------------------------------------------
+Logs
+----------------------------------------------------------
+curl -k "https://dulcehogar.local:4443/api/saludo?nombre=Anderson"   (varias veces)
+sudo tail -n 10 /var/log/apache2/dulcehogar.local-access.log
+sudo tail -n 10 /var/log/apache2/dulcehogar.local-error.log
+
+Salida del access.log:
+[PEGA AQUÍ]
+
+Cómo interpreto una línea del access.log (formato "combined"):
+  127.0.0.1 - - [23/Oct/2026:20:15:42 -0600] "GET /api/saludo?nombre=Anderson HTTP/1.1" 200 78 "-" "curl/8.5.0"
+  - 127.0.0.1 ........ IP del cliente que hizo la petición
+  - - - .............. identidad remota y usuario autenticado (vacíos)
+  - [fecha] .......... momento exacto de la petición y zona horaria
+  - "GET /api/... " .. método, ruta con parámetros y versión de HTTP
+  - 200 .............. código de estado (200 OK; 404 no existe; 502/503 el
+                       backend Express no respondió)
+  - 78 ............... tamaño de la respuesta en bytes
+  - "-" .............. referer (página desde la que llegó el visitante)
+  - "curl/8.5.0" ..... user-agent (navegador o programa que hizo la petición)
+
+Captura: capturas/fase4-log-acceso.png
+
+----------------------------------------------------------
+Preguntas
+----------------------------------------------------------
+1) ¿Por qué certbot no funciona para dulcehogar.local?
+   Certbot usa Let's Encrypt, que solo emite certificados para dominios
+   públicos y antes verifica que el solicitante controla el dominio (el
+   servidor de Let's Encrypt debe poder llegar al sitio desde internet o
+   comprobar un registro DNS público). ".local" no es un dominio público ni
+   resoluble en internet: solo existe en mi archivo hosts, así que no hay
+   forma de validarlo y ninguna CA pública firmaría ese nombre.
+
+2) Diferencia entre un certificado autofirmado y uno de mkcert
+   Un certificado autofirmado lo firma él mismo con su propia llave, sin
+   ninguna autoridad detrás, por lo que el navegador no tiene por qué confiar
+   y muestra advertencia (habría que aceptarla manualmente por cada
+   certificado). mkcert crea una autoridad certificadora local (CA), la
+   instala en los almacenes de confianza del equipo y con ella firma los
+   certificados; el navegador reconoce esa CA y muestra el candado sin
+   advertencias. La seguridad es válida solo en mi máquina, para desarrollo.
+
+3) ¿Por qué chmod 777 sería mala práctica?
+   777 da lectura, escritura y ejecución a cualquier usuario y proceso del
+   sistema. Si algún servicio o cuenta es comprometido, podría modificar o
+   reemplazar el sitio, subir código malicioso o alterar el contenido sin
+   restricción. Rompe el principio de mínimo privilegio: Apache (www-data)
+   solo necesita leer los archivos, y el dueño necesita escribir.
+
+4) Reto: si el dominio fuera dulcehogar.com.sv público
+   - Herramienta: usaría certbot (Let's Encrypt) con el plugin de Apache en
+     lugar de mkcert, para tener un certificado confiable para cualquier
+     visitante, con renovación automática.
+   - Puertos: los estándar, 80 (HTTP, necesario para la validación y el
+     redirect) y 443 (HTTPS), abiertos en el firewall, en lugar de 8085 y 4443.
+   - DNS: crear un registro A (y AAAA si hay IPv6) del dominio apuntando a la
+     IP pública del servidor, en el proveedor del dominio; quitar la entrada
+     de /etc/hosts; poner ServerName dulcehogar.com.sv en los VirtualHost.
+
+----------------------------------------------------------
+Errores encontrados y cómo los resolví
+----------------------------------------------------------
+[Escribe SOLO los errores que realmente tuviste.]
